@@ -80,16 +80,9 @@ fetch_from_cache <- function(key, cache_dir) {
 
   info <- readRDS(cache_file("info"))
   # Check if cache is invalid.
-  connected <- has_internet()
-  if (!connected) {
-    warning("Your network connection seems to be unavailable. s3mpi will ",
-            "use the latest cache entries instead of pulling from S3.",
-            call. = FALSE, immediate. = FALSE)
-  }
-
   ## If the modification time has changed since we last cached the
   ## value, re-pull it from S3 and wipe the cache.
-  if (connected && !identical(info$mtime, last_modified(key))) {
+  if (!identical(info$mtime, last_modified(key))) {
     not_cached
   } else {
     readRDS(cache_file("data"))
@@ -117,10 +110,6 @@ save_to_cache <- function(key, value, cache_dir = cache_directory()) {
 #' @param key character. The s3 key of the object.
 #' @return the last modified time or \code{NULL} if it does not exist on S3.
 last_modified <- function(key) {
-  ## If the user doesn't have internet, assume the file hasn't changed
-  ## since we can't figure out if it has! Here, we simply pull from
-  ## the cache.
-  if (!has_internet()) { return(as.POSIXct(as.Date("2000-01-01"))) }
   cmd <- if (use_legacy_api()) {
     paste("ls", key)
   } else {

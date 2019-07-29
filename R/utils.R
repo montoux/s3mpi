@@ -97,26 +97,6 @@ cache_directory <- function() {
   dir
 }
 
-## We ping google.com to ensure the user has an internet connection. If not,
-## we operate in "offline mode" for the whole session, that is, we read
-## from the s3cache if the user has set their `s3mpi.s3cache` option
-## but cannot store or read new keys.
-has_internet <- local({
-  has_internet_flag <- NULL
-  function() {
-    if (!is.null(get_option("s3mpi.skip_connection_check"))) return(FALSE)
-    if (!is.null(has_internet_flag)) { return(has_internet_flag) }
-    has_internet_flag <<- suppressWarnings({
-      internet_check <- try(file("http://google.com", "r"))
-      if (!is(internet_check, "try-error") && is(internet_check, "connection")) {
-        on.exit(close.connection(internet_check))
-      }
-      !(is(internet_check, "try-error") &&
-        grepl("cannot open", internet_check$message))
-    })
-  }
-})
-
 ## A sexy [least recently used cache](http://mcicpc.cs.atu.edu/archives/2012/mcpc2012/lru/lru.html)
 ## using [the cacher package](https://github.com/kirillseva/cacher).
 s3LRUcache <- function() {
