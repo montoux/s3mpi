@@ -22,9 +22,6 @@ s3.put <- function (x, path, name, bucket_location = "US",
   }
 
   s3key <- paste(path, name, sep = "")
-  ## This inappropriately-named function actually checks existence
-  ## of an entire *s3key*, not a bucket.
-  AWS.tools:::check.bucket(s3key)
 
   ## Ensure backoff vector has correct number of elements and is capped
   if (num_retries > 0) {

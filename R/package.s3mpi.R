@@ -11,5 +11,5 @@
 #'
 #' @name s3mpi
 #' @docType package
-#' @import AWS.tools crayon cacher digest
+#' @import crayon cacher digest
 NULL

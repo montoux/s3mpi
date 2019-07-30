@@ -1,6 +1,6 @@
 #' Fetch an R object from an S3 path.
 #'
-#' @param path character. A full S3 path.
+#' @param s3key character. A full S3 s3key
 #' @param bucket_location character. Usually \code{"US"}.
 #' @param verbose logical. If \code{TRUE}, the \code{s3cmd}
 #'    utility verbose flag will be set.
@@ -12,15 +12,18 @@
 #' @return For \code{s3.get}, the R object stored in RDS format on S3 in the \code{path}.
 #'    For \code{s3.put}, the system exit code from running the \code{s3cmd}
 #'    command line tool to perform the upload.
-s3.get <- function (path, bucket_location = "US", verbose = FALSE, debug = FALSE, cache = TRUE, storage_format = c("RDS", "CSV", "table", "XLSX"), ...) {
+s3.get <- function (s3key, bucket_location = "US", verbose = FALSE, debug = FALSE, cache = TRUE, storage_format = c("RDS", "CSV", "table", "XLSX"), ...) {
   storage_format <- match.arg(storage_format)
 
-  ## This inappropriately-named function actually checks existence
-  ## of a *path*, not a bucket.
-  AWS.tools:::check.bucket(path)
+  cache_id <- s3key
+
+  if (!is.null(storage_format) && storage_format == 'XLSX') {
+    arguments <- list(...)
+    cache_id <- paste0(s3key, '#', arguments[["sheet"]])
+  }
 
   # Helper function for fetching data from s3
-  fetch <- function(path, storage_format, bucket_location, ...) {
+  fetch <- function(s3key, storage_format, bucket_location, ...) {
     x.serialized <- tempfile()
     dir.create(dirname(x.serialized), showWarnings = FALSE, recursive = TRUE)
     ## We remove the file [when we exit the function](https://stat.ethz.ch/R-manual/R-patched/library/base/html/on.exit.html).
@@ -31,12 +34,12 @@ s3.get <- function (path, bucket_location = "US", verbose = FALSE, debug = FALSE
     }
 
     ## Run the s3cmd tool to fetch the file from S3.
-    cmd <- s3cmd_get_command(path, x.serialized, bucket_location_to_flag(bucket_location), verbose, debug)
+    cmd <- s3cmd_get_command(s3key, x.serialized, bucket_location_to_flag(bucket_location), verbose, debug)
     status <- system2(s3cmd(), cmd)
 
     if (as.logical(status)) {
-      warning("Nothing exists for key ", path)
-      `attr<-`(`class<-`(data.frame(), c("s3mpi_error", status)), "key", path)
+      warning("Nothing exists for key ", s3key)
+      `attr<-`(`class<-`(data.frame(), c("s3mpi_error", status)), "key", s3key)
     } else {
       ## And then read it back in RDS format.
       load_from_file <- get(paste0("load_as_", storage_format))
@@ -50,37 +53,48 @@ s3.get <- function (path, bucket_location = "US", verbose = FALSE, debug = FALSE
   if (is.windows() || isTRUE(get_option("s3mpi.disable_lru_cache")) || !isTRUE(cache)) {
     ## We do not have awk, which we will need for the moment to
     ## extract the modified time of the S3 object.
-    ans <- fetch(path, storage_format, bucket_location, ...)
-  } else if (!s3LRUcache()$exists(path)) {
-    ans <- fetch(path, storage_format, bucket_location, ...)
+    ans <- fetch(s3key, storage_format, bucket_location, ...)
+  } else if (!s3LRUcache()$exists(cache_id)) {
+    ans <- fetch(s3key, storage_format, bucket_location, ...)
+
     ## We store the value of the R object in a *least recently used cache*,
     ## expecting the user to not think about optimizing their code and
     ## call `s3read` with the same key multiple times in one session. With
     ## this approach, we keep the latest 10 object in RAM and do not have
     ## to reload them into memory unnecessarily--a wise time-space trade-off!
-    tryCatch(s3LRUcache()$set(path, ans), error = function(...) {
+    tryCatch(s3LRUcache()$set(cache_id, ans), error = function(...) {
       warning("Failed to store object in LRU cache. Repeated calls to ",
               "s3read will not benefit from a performance speedup.")
     })
   } else {
     # Check time on s3LRUcache's copy
-    last_cached <- s3LRUcache()$last_accessed(path) # assumes a POSIXct object
+    last_cached <- s3LRUcache()$last_accessed(cache_id) # assumes a POSIXct object
 
     # Check time on s3 remote's copy using the `s3cmd info` command.
-    s3.cmd <- paste("info ", path, "| head -n 3 | tail -n 1")
-    result <- system2(s3cmd(), s3.cmd, stdout = TRUE, stderr = NULL)
-    # The `s3cmd info` command produces the output
-    # "    Last mod:  Tue, 16 Jun 2015 19:36:10 GMT"
-    # in its third line, so we subset to the 20-39 index range
-    # to extract "16 Jun 2015 19:36:10".
-    result <- substring(result, 20, 39)
-    last_updated <- strptime(result, format = "%d %b %Y %H:%M:%S", tz = "GMT")
+    if (use_legacy_api()) {
+      s3.cmd <- paste("info ", s3key, "| head -n 3 | tail -n 1")
+      result <- system2(s3cmd(), s3.cmd, stdout = TRUE, stderr = NULL)
+      # The `s3cmd info` command produces the output
+      # "    Last mod:  Tue, 16 Jun 2015 19:36:10 GMT"
+      # in its third line, so we subset to the 20-39 index range
+      # to extract "16 Jun 2015 19:36:10".
+      result <- substring(result, 20, 39)
+      last_updated <- strptime(result, format = "%d %b %Y %H:%M:%S", tz = "GMT")
+    }
+    else {
+      s3.cmd <- paste0("s3 ls ", s3key)
+      result <- system2(s3cmd(), s3.cmd, stdout = TRUE, stderr = NULL)
+      # The `aws s3 ls` command produces the output
+      # "    2019-07-30 11:59:58   ..."
+      result <- substring(result, 0, 19)
+      last_updated <- strptime(result, format = "%Y-%m-%d %H:%M:%S", tz = "GMT")
+    }
 
     if (last_updated > last_cached) {
-      ans <- fetch(path, storage_format, bucket_location, ...)
-      s3LRUcache()$set(path, ans)
+      ans <- fetch(s3key, storage_format, bucket_location, ...)
+      s3LRUcache()$set(cache_id, ans)
     } else {
-      ans <- s3LRUcache()$get(path)
+      ans <- s3LRUcache()$get(cache_id)
     }
   }
   ans

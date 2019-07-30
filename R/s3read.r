@@ -28,18 +28,25 @@
 #' }
 s3read <- function(name, path = s3path(), cache = TRUE, serialize = TRUE, ...) {
   stopifnot(isTRUE(cache) || identical(cache, FALSE))
+  arguments <- list(...)
+  storage_format <- arguments[["storage_format"]]
 
   path <- add_ending_slash(path)
 
   s3key <- paste(path, name, sep = "")
+  cache_id <- s3key
+
+  if (!is.null(storage_format) && storage_format == 'XLSX') {
+    cache_id <- paste0(s3key, '#', arguments[["sheet"]])
+  }
 
   if (!isTRUE(cache) || is.null(get_option("s3mpi.cache"))) {
     value <- s3.get(s3key, cache = FALSE, ...)
-  } else if (is.not_cached(value <- s3cache(s3key))) {
+  } else if (is.not_cached(value <- s3cache(s3key, cache_id))) {
     value <- s3.get(s3key, cache = TRUE, ...)
     ## If the file system caching layer is enabled, store it to the file system
     ## before returning the value.
-    s3cache(s3key, value)
+    s3cache(s3key, cache_id, value)
   }
   if (isTRUE(serialize)) {
     s3normalize(value, TRUE)

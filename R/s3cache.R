@@ -24,11 +24,15 @@
 #' \code{options(s3mpi.cache = "some/dir")}. The recommended cache
 #' directory (where files will be stored) is \code{"~/.s3cache"}.
 #'
-#' @param s3key character. The full S3 key to attempt to read or write
+#' @param s3path character. The full S3 key to attempt to read or write
 #'    to the cache.
+#' @param cache_id character. The identifier to use to generate a cache key
+#'    for the R object to be stored. This may differ from s3path where
+#'    the same s3 object is used to cache different R objects (such as
+#'    reading particular sheets from an XLSX)
 #' @param value ANY. The R object to save in the cache. If missing,
 #'    a cache read will be performed instead.
-s3cache <- function(s3key, value) {
+s3cache <- function(s3path, cache_id, value) {
   if (!cache_enabled()) {
     stop("Cannot use s3mpi::s3cache until you set options(s3mpi.cache) ",
          "to a directory in which to place cache contents.")
@@ -44,9 +48,9 @@ s3cache <- function(s3key, value) {
 
   # If no value to store was provided, we assume we are reading from the cache.
   if (missing(value)) {
-    fetch_from_cache(s3key, d)
+    fetch_from_cache(s3path, cache_id, d)
   } else { # Otherwise, we are writing to it.
-    save_to_cache(s3key, value, d)
+    save_to_cache(s3path, cache_id, value, d)
   }
 }
 
@@ -56,17 +60,20 @@ s3cache <- function(s3key, value) {
 #' modified on S3 since the last cache save. If the file has never been
 #' cached or the cache is invalidated, it will return \code{s3mpi::not_cached}.
 #'
-#' @param key character. The key under which the cache entry is stored.
+#' @param s3path character. The full S3 key to attempt to read or write
+#'    to the cache.
+#' @param cache_id character. The identifier to use to generate a cache key
+#'    for the R object to be stored.
 #' @param cache_dir character. The cache directory. The default is
 #'    \code{cache_directory()}.
 #' @return the cached object if the cache has not invalidated. Otherwise,
 #'   return \code{s3mpi::not_cached}.
-fetch_from_cache <- function(key, cache_dir) {
+fetch_from_cache <- function(s3path, cache_id, cache_dir) {
   ## We use an [MD5 hash](https://en.wikipedia.org/wiki/MD5) to convert an
   ## arbitrary R object to a 32-character string representation. We use this
   ## as an implicit hash table in the file system so we do not have to deal
   ## with keys that cause conflicts with the file system (such as "../blah").
-  cache_key <- digest::digest(key)
+  cache_key <- digest::digest(cache_id)
   cache_file <- function(dir) file.path(cache_dir, dir, cache_key)
 
   if (!file.exists(cache_file("data"))) return(not_cached)
@@ -79,10 +86,11 @@ fetch_from_cache <- function(key, cache_dir) {
   }
 
   info <- readRDS(cache_file("info"))
+  
   # Check if cache is invalid.
   ## If the modification time has changed since we last cached the
   ## value, re-pull it from S3 and wipe the cache.
-  if (!identical(info$mtime, last_modified(key))) {
+  if (!identical(info$mtime, last_modified(s3path))) {
     not_cached
   } else {
     readRDS(cache_file("data"))
@@ -91,29 +99,32 @@ fetch_from_cache <- function(key, cache_dir) {
 
 #' Helper function for saving a file to a cache directory.
 #'
-#' @param key character. The key under which the cache entry is stored.
+#' @param s3path character. The full S3 key to attempt to read or write
+#'    to the cache.
+#' @param cache_id character. The identifier to use to generate a cache key
+#'    for the R object to be stored.
 #' @param value ANY. The R object to save in the cache.
 #' @param cache_dir character. The cache directory. The default is
 #'    \code{cache_directory()}.
-save_to_cache <- function(key, value, cache_dir = cache_directory()) {
-  cache_key  <- digest::digest(key)
+save_to_cache <- function(s3path, cache_id, value, cache_dir = cache_directory()) {
+  cache_key  <- digest::digest(cache_id)
   cache_file <- function(dir) file.path(cache_dir, dir, cache_key)
 
   saveRDS(value, cache_file("data"))
-  info <- list(mtime = last_modified(key), key = key)
+  info <- list(mtime = last_modified(s3path), key = s3path)
   saveRDS(info, cache_file("info"))
   invisible(NULL)
 }
 
 #' Determine the last modified time of an S3 object.
 #'
-#' @param key character. The s3 key of the object.
+#' @param path character. The s3 path of the object
 #' @return the last modified time or \code{NULL} if it does not exist on S3.
-last_modified <- function(key) {
+last_modified <- function(s3path) {
   cmd <- if (use_legacy_api()) {
-    paste("ls", key)
+    paste("ls", s3path)
   } else {
-    paste("s3", "ls", key)
+    paste0("s3 ls ", s3path)
   }
   s3result <- system2(s3cmd(), cmd, stdout = TRUE)[1L]
   if (is.character(s3result) && !is.na(s3result) && nzchar(s3result)) {
