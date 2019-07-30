@@ -12,7 +12,7 @@
 #' @return For \code{s3.get}, the R object stored in RDS format on S3 in the \code{path}.
 #'    For \code{s3.put}, the system exit code from running the \code{s3cmd}
 #'    command line tool to perform the upload.
-s3.get <- function (path, bucket_location = "US", verbose = FALSE, debug = FALSE, cache = TRUE, storage_format = c("RDS", "CSV", "table"), ...) {
+s3.get <- function (path, bucket_location = "US", verbose = FALSE, debug = FALSE, cache = TRUE, storage_format = c("RDS", "CSV", "table", "XLSX"), ...) {
   storage_format <- match.arg(storage_format)
 
   ## This inappropriately-named function actually checks existence
@@ -124,6 +124,14 @@ load_as_CSV <- function(filename, ...) {
 
 load_as_table <- function(filename, ...) {
   read.table(filename, ..., stringsAsFactors = FALSE)
+}
+
+load_as_XLSX <- function(filename, ...) {
+  if (!requireNamespace("readxl", quietly = TRUE)) {
+    stop("Package \"readxl\" needed for this function to work. Please install it.",
+    call. = FALSE)
+  }
+  readxl::read_xlsx(filename, ...)
 }
 
 #' Printing for s3mpi errors.
