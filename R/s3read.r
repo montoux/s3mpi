@@ -31,9 +31,7 @@ s3read <- function(name, path = s3path(), cache = TRUE, serialize = TRUE, ...) {
   arguments <- list(...)
   storage_format <- arguments[["storage_format"]]
 
-  path <- add_ending_slash(path)
-
-  s3key <- paste(path, name, sep = "")
+  s3key = create_s3key(path, name)
   cache_id <- s3key
 
   if (!is.null(storage_format) && storage_format == 'XLSX') {

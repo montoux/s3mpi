@@ -35,9 +35,8 @@ s3store <- function(obj, name = NULL, path = s3path(), safe = FALSE, ...) {
     name <- deparse(substitute(obj))
   }
 
-  path <- add_ending_slash(path)
+  s3key = create_s3key(path, name)
 
-  s3key <- paste(path, name, sep = "")
   if (isTRUE(safe) && s3exists(name, path = path, ...)) {
     stop("An object with name ", name, " on path ", path,
         " already exists. Use `safe = FALSE` to overwrite\n",

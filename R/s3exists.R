@@ -15,16 +15,8 @@
 #' s3exists("my/key", "s3://anotherbucket/") # We can of course change the bucket.
 #' }
 s3exists <- function(name, path = s3path()) {
-  if (is.null(name)) return(FALSE)  # https://github.com/robertzk/s3mpi/issues/22
-  path  <- add_ending_slash(path)
-  s3key <- paste(path, name, sep = "")
-  s3key <- gsub("/$", "", s3key) # strip terminal /
-  if (!grepl("^s3://", s3key)) {
-    stop("s3 paths must begin with \"s3://\"")
-  }
-
+  s3key = create_s3key(path, name)
   results <- system2(s3cmd(), s3cmd_exists_command(s3key), stdout = TRUE)
-
   check_exists_results(name, results)
 }
 

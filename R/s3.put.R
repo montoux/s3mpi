@@ -14,14 +14,14 @@
 s3.put <- function (x, path, name, bucket_location = "US",
                     debug = FALSE, check_exists = TRUE,
                     num_retries = get_option("s3mpi.num_retries", 0), backoff = 2 ^ seq(2, num_retries + 1),
-                    max_backoff = 128, storage_format = c("RDS", "CSV", "table"), row.names = FALSE, ...) {
+                    max_backoff = 128, storage_format = c("RDS", "CSV", "table", "file"), row.names = FALSE, ...) {
   storage_format <- match.arg(storage_format)
 
   if (is.data.frame(x) && storage_format %in% c("CSV, table")) {
     stop("You can't store an object in ", storage_format," format if it isn't a data.frame.")
   }
 
-  s3key <- paste(path, name, sep = "")
+  s3key <- create_s3key(path, name)
 
   ## Ensure backoff vector has correct number of elements and is capped
   if (num_retries > 0) {
@@ -31,22 +31,28 @@ s3.put <- function (x, path, name, bucket_location = "US",
     backoff <- pmin(backoff, max_backoff)
   }
 
-  ## We create a temporary file, *write* the R object to the file, and then
-  ## upload that file to S3. This magic works thanks to R's fantastic
-  ## support for [arbitrary serialization](https://stat.ethz.ch/R-manual/R-patched/library/base/html/readRDS.html)
-  ## (including closures!).
-  x.serialized <- tempfile();
-  dir.create(dirname(x.serialized), showWarnings = FALSE, recursive = TRUE)
-  on.exit(unlink(x.serialized, force = TRUE), add = TRUE)
-  save_to_file <- get(paste0("save_as_", storage_format))
-  save_to_file(x, x.serialized, row.names, ...)
+  if (storage_format == "file") {
+    x.serialized = x
+  }
+  else {
+    ## We create a temporary file, *write* the R object to the file, and then
+    ## upload that file to S3. This magic works thanks to R's fantastic
+    ## support for [arbitrary serialization](https://stat.ethz.ch/R-manual/R-patched/library/base/html/readRDS.html)
+    ## (including closures!).
+
+    x.serialized <- tempfile();
+    dir.create(dirname(x.serialized), showWarnings = FALSE, recursive = TRUE)
+    on.exit(unlink(x.serialized, force = TRUE), add = TRUE)
+    save_to_file <- get(paste0("save_as_", storage_format))
+    save_to_file(x, x.serialized, row.names, ...)
+  }
 
   cmd <- s3cmd_put_command(s3key, x.serialized, bucket_location_to_flag(bucket_location), debug)
   run_system_put(path, name, cmd, check_exists, num_retries, backoff)
 }
 
 run_system_put <- function(path, name, s3.cmd, check_exists, num_retries, backoff) {
-  ret <- system2(s3cmd(), s3.cmd, stdout = TRUE)
+  ret <- system2(s3cmd(), s3.cmd)
   if (isTRUE(check_exists) && !s3exists(name, path)) {
     if (num_retries > 0) {
       Sys.sleep(backoff[length(backoff) - num_retries + 1])

@@ -107,6 +107,21 @@ s3LRUcache <- function() {
   }
 }
 
+# Concatenate a path to a bucket to create a full s3 object key
+create_s3key <- function(bucket, path) {
+  if (is.null(bucket) || is.null(path)) {
+    stop("An s3 object key must comprise a bucket and a path")
+  }
+  else if (!grepl("^s3://", bucket)) {
+    stop("An s3 bucket must begin with \"s3://\"")
+  }
+
+  bucket <- gsub("/$", "", bucket) # strip terminal /
+  path  <- gsub("^/", "", path) # strip preceeding /
+  s3key <- paste(bucket, path, sep = "/")
+  s3key <- gsub("/$", "", s3key) # strip terminal /
+}
+
 # All S3 paths need a slash at the end to work, but we don't need the user
 # to know that, so let's add a slash for them if they forget.
 add_ending_slash <- function(path) {
