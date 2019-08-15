@@ -12,7 +12,7 @@
 #' @return For \code{s3.get}, the R object stored in RDS format on S3 in the \code{path}.
 #'    For \code{s3.put}, the system exit code from running the \code{s3cmd}
 #'    command line tool to perform the upload.
-s3.get <- function (s3key, bucket_location = "US", verbose = FALSE, debug = FALSE, cache = TRUE, storage_format = c("RDS", "CSV", "table", "XLSX"), ...) {
+s3.get <- function (s3key, bucket_location = "US", verbose = FALSE, debug = FALSE, cache = TRUE, storage_format = c("RDS", "CSV", "table", "XLSX", "datatable"), ...) {
   storage_format <- match.arg(storage_format)
 
   cache_id <- s3key
@@ -139,6 +139,11 @@ load_as_CSV <- function(filename, ...) {
 load_as_table <- function(filename, ...) {
   read.table(filename, ..., stringsAsFactors = FALSE)
 }
+
+load_as_datatable <- function(filename, ...) {
+  fread(filename, ..., stringsAsFactors = FALSE)
+}
+
 
 load_as_XLSX <- function(filename, ...) {
   if (!requireNamespace("readxl", quietly = TRUE)) {
