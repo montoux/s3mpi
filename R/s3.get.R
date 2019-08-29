@@ -107,7 +107,9 @@ s3cmd_get_command <- function(path, file, bucket_flag, verbose, debug) {
           if (verbose) "--verbose --progress" else "--no-progress",
           if (debug) "--debug" else "")
   } else {
-    paste0("s3 cp ", path, " ", file)
+    paste("s3 cp",
+          if (verbose) "" else "--no-progress",
+          path, file)
   }
 }
 
