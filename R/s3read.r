@@ -32,10 +32,10 @@ s3read <- function(name, path = s3path(), cache = TRUE, serialize = TRUE, ...) {
   storage_format <- arguments[["storage_format"]]
 
   s3key = create_s3key(path, name)
-  cache_id <- s3key
+  cache_id <- paste0(s3key, '#', storage_format)
 
   if (!is.null(storage_format) && storage_format == 'XLSX') {
-    cache_id <- paste0(s3key, '#', arguments[["sheet"]])
+    cache_id <- paste0(cache_id, '#', arguments[["sheet"]])
   }
 
   if (!isTRUE(cache) || is.null(get_option("s3mpi.cache"))) {

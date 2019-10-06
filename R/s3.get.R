@@ -15,11 +15,11 @@
 s3.get <- function (s3key, bucket_location = "US", verbose = FALSE, debug = FALSE, cache = TRUE, storage_format = c("RDS", "CSV", "table", "XLSX", "datatable"), ...) {
   storage_format <- match.arg(storage_format)
 
-  cache_id <- s3key
+  cache_id <- paste0(s3key, '#', storage_format)
 
   if (!is.null(storage_format) && storage_format == 'XLSX') {
     arguments <- list(...)
-    cache_id <- paste0(s3key, '#', arguments[["sheet"]])
+    cache_id <- paste0(cache_id, '#', arguments[["sheet"]])
   }
 
   # Helper function for fetching data from s3
